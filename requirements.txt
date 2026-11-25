@@ -1,0 +1,8 @@
+# Milestone 1: talk to BigQuery and read .env
+google-cloud-bigquery==3.*
+python-dotenv==1.*
+pytest==8.*
+
+# Milestone 2: fetch and validate prices
+yfinance==1.8.*
+pandas==2.*
