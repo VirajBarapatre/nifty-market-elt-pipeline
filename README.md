@@ -44,8 +44,10 @@ Runs entirely on the BigQuery sandbox (no billing account): 10 GiB storage, 1 Ti
 
 ## Known limitations
 
-- **yfinance is unofficial.** It scrapes Yahoo Finance, can be rate limited, and can return missing days or bad tickers. The pipeline retries and logs these, but the data is not guaranteed.
-- **BigQuery sandbox limits.** No DML (MERGE, UPDATE, DELETE) and tables expire after 60 days, so loads are designed around load jobs and history must be re-loaded after expiry.
+- **yfinance is unofficial.** It scrapes Yahoo Finance, can be rate limited, and can return missing days, placeholder rows or bad tickers. The pipeline retries, validates and logs these, but the data is not guaranteed. In the 3-year backfill, 106 of 36,900 rows were rejected as zero-volume placeholder rows.
+- **BigQuery sandbox limits.** No DML (MERGE, UPDATE, DELETE), so loads use a load job plus a query job that rewrites the table. Tables expire 60 days after creation; the loader pushes the expiry forward on every run, so a stopped pipeline loses its raw data after about two months and needs a backfill.
+- **Survivorship bias.** The ticker list is today's Nifty 50, applied to all history. Stocks that left the index are missing, and some included stocks were not in the index for the whole period.
+- **Intraday rows.** A run before the 15:30 IST close stores a mid-day price for today; the next run's 7-day lookback replaces it.
 
 ## What this does NOT prove
 

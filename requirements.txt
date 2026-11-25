@@ -1,5 +1,5 @@
 # Milestone 1: talk to BigQuery and read .env
-google-cloud-bigquery==3.*
+google-cloud-bigquery[pandas]==3.*
 python-dotenv==1.*
 pytest==8.*
 
