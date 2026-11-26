@@ -54,4 +54,52 @@
 - If the pipeline stops for ~2 months, the sandbox deletes the raw table and a backfill is needed.
 
 ### What I still don't understand
-- _Viraj to fill in._
+- Nothing yet.
+
+## Milestone 3: dbt staging (done, 2026-11-25)
+
+### What was done
+- dbt-core 1.12 + dbt-bigquery 1.12 project in `dbt/`. `profiles.yml` is committed but holds no secrets: every value is an `env_var()`. Run locally with `dotenv -f ..\.env run -- dbt <command> --profiles-dir .`.
+- Seed: the official NSE list `dbt/seeds/ind_nifty50list.csv` loaded to `analytics_seeds.ind_nifty50list`.
+- Source `raw.daily_prices` with freshness on `ingested_at`: warn after 3 days, error after 5.
+- `stg_daily_prices` (view): renamed and typed columns, `symbol` without `.NS`, `price_id` = ticker + date, filters bad rows again, dedupes on ticker+date keeping the latest `ingested_at`.
+- `stg_stocks` (view): symbol, ticker, company name, sector (NSE "Industry"), series, ISIN.
+- 15 tests: not_null on key columns, unique on `price_id` and on symbol/ticker, relationships from price tickers to `stg_stocks`, accepted_values on series = EQ.
+- `dbt build`: 18/18 passed (1 seed, 2 views, 15 tests). `dbt source freshness`: pass.
+
+### Decisions and why
+- **Staging = views**: no storage cost, always reflects raw; marts will be tables because the dashboard reads them often.
+- **Custom schemas** (`analytics_staging`, `analytics_seeds`, later `analytics_marts`): layers are visible as separate datasets.
+- **Surrogate key `price_id` + unique test** instead of a package for multi-column uniqueness: no extra dependency, and the key is reusable in marts.
+- **Re-filter and dedupe in staging**: staging must not trust whatever loaded the raw table.
+- **relationships instead of accepted_values for tickers**: the list stays in one place (the seed) and updates when the index changes; accepted_values is used on `series` instead.
+- **Freshness 3/5 days**: weekends and market holidays would make a 1-day threshold warn every Monday.
+
+### What I still don't understand
+- Nothing yet.
+
+## Milestone 4: dbt marts (done, 2026-11-26)
+
+### What was done
+- Star schema in `analytics_marts`: `fact_daily_prices` (grain: ticker + trading day), `dim_stock` (50 rows, company and sector), `dim_date` (one row per calendar day, with is_weekend and is_trading_day).
+- `fact_daily_prices` is "incremental by rewrite": existing rows older than 10 days (read from `{{ this }}`) + the last 10 days from staging, written with CREATE OR REPLACE TABLE AS SELECT. Verified: the second run took the incremental branch and kept 36,799 rows with 36,799 unique keys.
+- `mart_stock_metrics`: daily return (LAG on adjusted close), 20/50-day moving averages, 30-day annualised volatility (stddev x sqrt(252)); windows use ROWS, so they count trading days; values are NULL until the full window exists.
+- `mart_top_movers`: top 5 gainers and losers per day with RANK().
+- `mart_sector_daily`: equal-weighted average return per sector per day, advancers and decliners.
+- 37 tests (keys, relationships fact -> dims, accepted_values) plus a warn-only singular test for daily moves over 25%. `dbt build`: 45 pass, 1 warn. `dbt docs generate` produces the catalog and lineage graph.
+- Re-ran ingestion for 18-25 Nov: 25 Nov now has closing prices for 43 stocks; Yahoo returned null values for 7 (APOLLOHOSP, BAJAJ-AUTO, BHARTIARTL, HCLTECH, MARUTI, POWERGRID, SBILIFE). The next daily run's 7-day re-fetch should fill them in.
+
+### Decisions and why
+- **Incremental by rewrite instead of dbt's incremental materialization**: every BigQuery incremental strategy uses MERGE, which the sandbox blocks. CTAS is DDL and is allowed. Downside: the whole table is rewritten each run; rows older than 10 days need `--full-refresh` to change.
+- **10-day lookback**: catches late corrections from yfinance and the 7-day re-fetch in ingestion.
+- **Metric marts as full tables**: rolling windows need 50 days of history anyway, and 37k rows rebuild in seconds.
+- **Adjusted close for returns and MAs**: splits and dividends don't show as crashes.
+- **dim_date covers calendar days**: Power BI date slicers have no gaps; is_trading_day separates holidays.
+- **Equal-weighted sectors**: simple and explainable; not the same as NSE's market-cap-weighted sector indices.
+
+### Known data issues
+- The plausibility test flags TMPV.NS -40% on 2025-10-14 (likely the Tata Motors demerger, which Yahoo's adjusted close does not adjust for) and TRENT.NS -33% on 2026-01-01 (not yet investigated). Both affect returns, volatility, top movers and sector averages on those days.
+- Re-ran ingestion for 18-25 Nov: 25 Nov now has closing prices for 43 stocks; Yahoo returned null values for 7 (APOLLOHOSP, BAJAJ-AUTO, BHARTIARTL, HCLTECH, MARUTI, POWERGRID, SBILIFE). The next daily run's 7-day re-fetch should fill them in.
+
+### What I still don't understand
+- Nothing yet.

@@ -1,0 +1,24 @@
+name: nifty_pipeline
+version: "1.0.0"
+config-version: 2
+profile: nifty_pipeline
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  nifty_pipeline:
+    staging:
+      +schema: staging          # -> dataset analytics_staging
+      +materialized: view       # cheap: staging is just cleaned columns
+    marts:
+      +schema: marts            # -> dataset analytics_marts
+      +materialized: table
+
+seeds:
+  nifty_pipeline:
+    +schema: seeds              # -> dataset analytics_seeds

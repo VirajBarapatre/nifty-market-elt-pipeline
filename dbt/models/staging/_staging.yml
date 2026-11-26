@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: stg_stocks
+    description: "Nifty 50 constituents from the official NSE list: ticker, company name and sector."
+    columns:
+      - name: symbol
+        description: "NSE symbol, e.g. RELIANCE."
+        data_tests: [not_null, unique]
+      - name: ticker
+        description: "Yahoo Finance ticker, e.g. RELIANCE.NS."
+        data_tests: [not_null, unique]
+      - name: company_name
+        data_tests: [not_null]
+      - name: sector
+        description: "NSE industry classification."
+        data_tests: [not_null]
+      - name: series
+        description: "NSE trading series. Nifty 50 stocks trade in EQ."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["EQ"]
+
+  - name: stg_daily_prices
+    description: "Cleaned daily OHLCV, one row per ticker per trading day."
+    columns:
+      - name: price_id
+        description: "ticker + '_' + trade_date. The grain of this model."
+        data_tests: [not_null, unique]
+      - name: ticker
+        description: "Yahoo ticker. Must exist in the NSE Nifty 50 list."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_stocks')
+                field: ticker
+      - name: trade_date
+        data_tests: [not_null]
+      - name: close_price
+        description: "Actual closing price that day (not adjusted)."
+        data_tests: [not_null]
+      - name: adj_close_price
+        description: "Close adjusted for splits and dividends. Use for returns."
+        data_tests: [not_null]
+      - name: volume
+        data_tests: [not_null]

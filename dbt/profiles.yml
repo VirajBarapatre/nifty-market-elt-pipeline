@@ -1,0 +1,16 @@
+# dbt connection settings. Committed to git because it holds NO secrets:
+# every value comes from environment variables (.env locally, Docker env in Airflow).
+nifty_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: "{{ env_var('BQ_DBT_DATASET') }}"
+      location: "{{ env_var('BQ_LOCATION') }}"
+      threads: 4
+      job_execution_timeout_seconds: 300
+      job_retries: 1
+      priority: interactive

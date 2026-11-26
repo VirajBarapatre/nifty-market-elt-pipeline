@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: dim_stock
+    description: "Dimension: one row per Nifty 50 stock with company name and NSE sector."
+    columns:
+      - name: ticker
+        description: "Yahoo ticker, e.g. RELIANCE.NS. Primary key."
+        data_tests: [not_null, unique]
+      - name: sector
+        description: "NSE industry classification."
+        data_tests: [not_null]
+
+  - name: dim_date
+    description: "Dimension: one row per calendar day across the price history."
+    columns:
+      - name: date_day
+        description: "Calendar date. Primary key."
+        data_tests: [not_null, unique]
+      - name: is_trading_day
+        description: "True if at least one stock has a price that day."
+
+  - name: fact_daily_prices
+    description: >
+      Fact: one row per ticker per trading day. Rebuilt each run from existing rows older
+      than 10 days plus the last 10 days from staging (incremental by rewrite, because the
+      BigQuery sandbox blocks MERGE). Use --full-refresh after a backfill.
+    columns:
+      - name: price_id
+        description: "ticker + '_' + trade_date. Primary key (the grain)."
+        data_tests: [not_null, unique]
+      - name: ticker
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_stock')
+                field: ticker
+      - name: trade_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: adj_close_price
+        description: "Close adjusted for splits and dividends."
+        data_tests: [not_null]
+
+  - name: mart_stock_metrics
+    description: "Per stock per day: daily return, 20/50-day moving averages and 30-day annualised volatility."
+    columns:
+      - name: price_id
+        data_tests: [not_null, unique]
+      - name: daily_return
+        description: "adj_close / previous trading day's adj_close - 1. NULL on a stock's first day."
+      - name: ma_20
+        description: "Average adjusted close over the last 20 trading days. NULL until 20 days exist."
+      - name: ma_50
+        description: "Average adjusted close over the last 50 trading days. NULL until 50 days exist."
+      - name: volatility_30d_annualized
+        description: "Std dev of the last 30 daily returns x sqrt(252). NULL until 30 returns exist."
+
+  - name: mart_top_movers
+    description: "Top 5 gainers and top 5 losers per trading day by daily return."
+    columns:
+      - name: price_id
+        data_tests: [not_null, unique]
+      - name: mover_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["gainer", "loser"]
+
+  - name: mart_sector_daily
+    description: "Equal-weighted average daily return per sector per day, with advancers and decliners."
+    columns:
+      - name: sector_day_id
+        description: "sector + '_' + trade_date. Primary key."
+        data_tests: [not_null, unique]
+      - name: avg_daily_return
+        data_tests: [not_null]
