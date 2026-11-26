@@ -32,3 +32,8 @@ data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ---- Airflow local runtime ----
+airflow/data/
+airflow/config/
+airflow/docker-compose.official.yaml

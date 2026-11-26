@@ -33,6 +33,7 @@ Python 3.11 · Airflow (Docker Compose) · Google BigQuery (free sandbox) · dbt
 4. Create a BigQuery sandbox project and a service account with **BigQuery Data Editor** and **BigQuery Job User**. Save its JSON key **outside** this repo.
 5. Copy `.env.example` to `.env` and fill in your values.
 6. Check the connection: `python scripts/check_bq_connection.py`.
+7. Start Airflow: in airflow/, run docker compose --env-file ../.env up airflow-init, then docker compose --env-file ../.env up -d. Open http://localhost:8080 (local login airflow / airflow) and unpause nifty_daily_pipeline.
 
 ## Design decisions
 

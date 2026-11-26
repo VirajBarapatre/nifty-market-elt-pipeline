@@ -1,0 +1,4 @@
+# Libraries the ingestion tasks import inside Airflow (dbt lives in its own venv).
+yfinance==1.8.*
+pandas==2.*
+google-cloud-bigquery[pandas]==3.*

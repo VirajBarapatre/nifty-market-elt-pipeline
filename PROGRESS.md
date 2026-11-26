@@ -103,3 +103,38 @@
 
 ### What I still don't understand
 - Nothing yet.
+
+## Milestone 5: Airflow orchestration (done, 2026-11-26)
+
+### What was done
+- Airflow 3.4.0 in Docker Compose (`airflow/`), adapted from the official compose file: Postgres metadata DB, API server (UI on :8080), scheduler, DAG processor; LocalExecutor.
+- Custom image `nifty-airflow:3.4.0`: official `apache/airflow:3.4.0-python3.11` + yfinance, pandas, BigQuery client; dbt-core/dbt-bigquery 1.12 in a separate venv (`/home/airflow/dbt_venv`).
+- The service account key is bind-mounted read-only at `/opt/airflow/secrets/gcp-sa.json`; never copied into the image. `GCP_KEY_FILE_HOST` and `AIRFLOW_JWT_SECRET` live in `.env`.
+- DAG `nifty_daily_pipeline`: is_trading_day -> fetch -> validate -> load -> dbt_run -> dbt_test. Schedule `0 17 * * 1-5` (17:00 IST weekdays), catchup=False, max_active_runs=1, 2 retries with exponential backoff.
+- First scheduled run (26 Nov): all 6 tasks succeeded in under 2 minutes; the 7-day re-fetch also filled the 7 stocks Yahoo had left null for 25 Nov.
+- Backfill 23-25 Nov: 23 and 25 succeeded with no duplicate rows (row count unchanged); 24 Nov (holiday) ran is_trading_day = False and skipped every downstream task.
+- Failure demo (trigger with conf `{"simulate_load_failure": true}`): load failed on all 3 attempts, dbt_run and dbt_test were upstream_failed and never ran, nothing reached BigQuery.
+
+### Airflow concepts (in my words)
+- **DAG**: a workflow as a directed graph of tasks with no cycles, plus a schedule.
+- **Task / operator**: a task is one step; an operator is the template it's built from (`@task` = Python, `BashOperator` = shell command). A task instance is one task for one run.
+- **XCom**: small values passed between tasks, stored in the metadata DB. We pass file paths, never DataFrames.
+- **logical_date**: the date a run is for. Tasks derive the trading date from it, so reruns/backfills are reproducible. Manual triggers in Airflow 3 have no logical date, so we fall back to `run_after`.
+- **catchup**: with catchup=False, unpausing creates only the latest run, not every missed one since start_date. Backfills are explicit (`airflow backfill create`).
+- **Short-circuit**: a task that returns False skips everything downstream (holidays show as skipped, not failed).
+- **Trigger rule**: default all_success, so a failed task blocks all downstream tasks (upstream_failed).
+- **Idempotency**: every task gives the same result if rerun for the same date (fixed date window + upsert load), so retries and backfills are safe.
+
+### Decisions and why
+- **LocalExecutor**: one machine; Celery + Redis add moving parts with no benefit here.
+- **dbt in its own venv**: dbt and Airflow pin conflicting libraries.
+- **is_trading_day via the Nifty index bar**: no hand-maintained holiday list to go stale.
+- **max_active_runs=1 (and --max-active-runs 1 for backfills)**: the load rewrites the raw table; parallel runs would race.
+
+### Bugs found and fixed
+- Manual trigger without a logical date crashed with KeyError 'logical_date' (Airflow 3 behaviour). Fixed by falling back to `dag_run.run_after`.
+- `backfill create --to-date 2026-11-25` didn't include 25 Nov: the 17:00 IST (11:30 UTC) schedule time is after midnight of the to-date. Use the next day as to-date.
+- Backfill runs ran in parallel despite max_active_runs=1 on the DAG; pass `--max-active-runs 1` to backfill.
+
+### What I still don't understand
+- Nothing yet.
