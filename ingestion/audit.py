@@ -8,13 +8,16 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+from google.api_core.exceptions import Forbidden, NotFound
 from google.cloud import bigquery
 
 logger = logging.getLogger(__name__)
 
 # Sandbox tables are deleted 60 days after creation and a write does NOT reset that
 # clock, so every write pushes the expiry forward. Shared with load.py.
-EXPIRY_DAYS = 59
+# The sandbox rejects values close to 60 days (59 was refused on 2026-11-27, 58 worked),
+# so we keep a margin.
+EXPIRY_DAYS = 57
 
 # Rejected rows can be broken in any way, so every price column is FLOAT64 and NULLABLE
 # (a null or fractional volume must still fit, or we'd lose the evidence).
@@ -51,10 +54,21 @@ RUN_LOG_SCHEMA = [
 
 
 def extend_expiry(client: bigquery.Client, table_id: str) -> bigquery.Table:
-    """Push the table's expiry EXPIRY_DAYS into the future and return the updated table."""
+    """Push the table's expiry EXPIRY_DAYS into the future and return the table.
+
+    Best effort: if BigQuery refuses (the sandbox caps expiry), keep the current expiry and
+    log an ALERT instead of failing. Losing today's load would be worse than an expiry date
+    that didn't move; the alert tells us to look before the table actually expires.
+    """
     table = client.get_table(table_id)
+    old_expiry = table.expires
     table.expires = datetime.now(timezone.utc) + timedelta(days=EXPIRY_DAYS)
-    return client.update_table(table, ["expires"])
+    try:
+        return client.update_table(table, ["expires"])
+    except Forbidden as exc:
+        logger.error("ALERT: could not extend expiry of %s (still %s): %s",
+                     table_id, old_expiry, exc.message)
+        return client.get_table(table_id)
 
 
 def append_rows(df: pd.DataFrame, client: bigquery.Client, table_id: str,
@@ -75,13 +89,19 @@ def append_rows(df: pd.DataFrame, client: bigquery.Client, table_id: str,
 def write_rejected(rejected: pd.DataFrame, run_id: str, client: bigquery.Client,
                    project: str, dataset: str, table: str = "rejected_prices") -> int:
     """Quarantine: keep every rejected row with why it was rejected and which run saw it."""
+    table_id = f"{project}.{dataset}.{table}"
     if rejected.empty:
+        # Nothing to add, but keep the quarantine (and its history) from expiring.
+        try:
+            extend_expiry(client, table_id)
+        except NotFound:
+            pass                      # first clean run before any reject: no table yet
         return 0
     df = rejected.copy()
     df["run_id"] = run_id
     df["rejected_at"] = pd.Timestamp.now(tz="UTC")
     df["volume"] = pd.to_numeric(df["volume"], errors="coerce").astype("float64")
-    return append_rows(df, client, f"{project}.{dataset}.{table}", REJECTED_SCHEMA)
+    return append_rows(df, client, table_id, REJECTED_SCHEMA)
 
 
 def write_run_log(row: dict, client: bigquery.Client, project: str, dataset: str,
