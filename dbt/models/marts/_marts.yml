@@ -53,7 +53,10 @@ models:
       - name: price_id
         data_tests: [not_null, unique]
       - name: daily_return
-        description: "adj_close / previous trading day's adj_close - 1. NULL on a stock's first day."
+        description: "adj_close / previous trading day's adj_close - 1. NULL on a stock's first day and on known corporate-action days (seed known_corporate_actions)."
+      - name: is_corporate_action_day
+        description: "TRUE when the seed known_corporate_actions lists this ticker and date."
+        data_tests: [not_null]
       - name: ma_20
         description: "Average adjusted close over the last 20 trading days. NULL until 20 days exist."
       - name: ma_50

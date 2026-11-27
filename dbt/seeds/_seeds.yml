@@ -1,0 +1,26 @@
+version: 2
+
+seeds:
+  - name: known_corporate_actions
+    description: >
+      Days where a stock's price jump is a corporate action or a data-source error,
+      not a real market move. Found by the assert_daily_return_is_plausible test and
+      checked by hand. mart_stock_metrics sets daily_return to NULL on these days.
+    config:
+      column_types:
+        action_date: date
+    columns:
+      - name: ticker
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_stock')
+                field: ticker
+      - name: action_date
+        data_tests: [not_null]
+      - name: action_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["split", "bonus", "demerger", "split_adjustment_error"]

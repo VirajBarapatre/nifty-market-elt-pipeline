@@ -67,3 +67,12 @@ def test_good_and_rejected_add_up():
     rows = [row(), row(trade_date=D2, volume=0), row(ticker="TCS.NS", open=None)]
     good, rejected = validate(pd.DataFrame(rows))
     assert len(good) + len(rejected) == len(rows)
+
+
+def test_unknown_ticker_rejected_only_when_list_given():
+    df = pd.DataFrame([row(), row(ticker="FAKECO.NS")])
+    good, rejected = validate(df, allowed_tickers=["RELIANCE.NS"])
+    assert list(good["ticker"]) == ["RELIANCE.NS"]
+    assert list(rejected["reject_reason"]) == ["unknown_ticker"]
+    good, rejected = validate(df)             # no list: ticker is not checked
+    assert len(good) == 2 and rejected.empty

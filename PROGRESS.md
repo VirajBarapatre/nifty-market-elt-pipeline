@@ -138,3 +138,40 @@
 
 ### What I still don't understand
 - Nothing yet.
+
+## Milestone 6: Data quality and monitoring (done, 2026-11-27)
+
+### What was done
+- `ingestion/validate.py`: new rule 7, `unknown_ticker` (a ticker not in the Nifty 50 list).
+- `ingestion/quality.py` (pure pandas, unit tested): per-run metrics (rows fetched/good/rejected, reject rate, null rate over price cells, tickers received vs expected on the trade date) and two kinds of gate:
+  - HARD (block the load): no rows, reject rate > 10%, null rate > 5%.
+  - SOFT (load, then alert): any expected ticker missing on the trade date.
+- `ingestion/audit.py`: two append-only audit tables in `raw`, written with load jobs (no DML):
+  - `raw.rejected_prices`: the quarantine. Every rejected row with run_id, reject_reason, rejected_at.
+  - `raw.pipeline_runs`: one row per run attempt with the metrics, status (loaded / loaded_with_warnings / blocked) and the gate messages.
+  - `extend_expiry()` moved here and is shared with load.py, so all raw tables keep pushing their 60-day sandbox expiry forward.
+- `ingestion/run.py`: `--input-file` to load a CSV instead of yfinance; runs the gates; exit codes 0 clean, 1 blocked, 2 loaded with warnings.
+- Airflow DAG: `validate` became `quality_gate` (validate, quarantine, metrics, hard gate). New `record_run` task beside dbt writes the run log and raises the soft alert. `dbt_test` now also runs `dbt source freshness` (stale data alert). `on_failure_callback` logs one `ALERT ...` line per failed task. New param `input_file` for demos.
+- dbt: seed `known_corporate_actions` (TMPV demerger 2025-10-14, TRENT split adjustment error 2026-01-01). `mart_stock_metrics` sets daily_return to NULL on those days and adds `is_corporate_action_day`. New singular test `assert_all_tickers_on_latest_day` (severity error).
+- Investigation: TMPV -40% = Tata Motors demerger (Yahoo never adjusts demergers). TRENT -33% = Yahoo applied a 3-for-2 split (x1.5) only from 1 Jan 2026 while its own actions list the split on 4 Jun 2026; the real move that day was about +0.4%.
+- Bad-file demo (`tests/fixtures/bad_prices.csv`, 8 rows, 1 good): CLI exit 1 with "ALERT: load BLOCKED ... reject rate 87.5% > 10%". In Airflow, quality_gate failed on attempt 1 with no retry and every downstream task was upstream_failed. Both times 7 rows went to the quarantine, a "blocked" row went to pipeline_runs, and raw.daily_prices stayed at 36,894 rows.
+- Normal run: 240 rows, 0 rejected, 50 of 50 tickers, all 7 tasks green. dbt build 53 PASS, 0 WARN (the plausibility test now passes). pytest 29 passed.
+
+### Decisions and why
+- **Fail closed on hard gates**: if most of a batch is bad, the source or file is broken, and the "good" rows can't be trusted either. Loading nothing is safer than loading half.
+- **Missing tickers are soft**: the rows we got are fine, and the 7-day re-fetch usually fills the gap next run. Blocking would hide 49 good stocks because of 1 missing one.
+- **AirflowFailException for hard gates**: retries fix network blips, not bad data. Normal exceptions (yfinance down) still retry.
+- **record_run runs beside dbt, not before it**: a soft alert shouldn't stop the marts from building.
+- **Append-only audit tables**: they are logs; re-running a date adds a new attempt with a new run_id instead of hiding the old one. (Trade-off: a retry after a write can duplicate rows; filter by run_id.)
+- **Quarantine columns all FLOAT64 and nullable**: broken rows must still fit, or the evidence is lost.
+- **Null the return on corporate-action days instead of deleting the row**: the prices are real; only the return across the gap is meaningless.
+- **Completeness checked twice**: Python checks the batch before load; dbt checks the warehouse after, and would catch a ticker lost between raw and marts.
+
+### Known caveats
+- Moving averages and volatility around the TMPV and TRENT dates are still distorted (prices before and after are on different scales). A proper fix is a per-ticker adjustment factor applied in staging. Volatility is NULL for 30 trading days after each action day because that window has a NULL return.
+- The TRENT split date is uncertain (Yahoo shows two dates); confirm on NSE's corporate actions page.
+- Airflow runs with `input_file` measure completeness on the run date, not the file's date. Harmless for the demo (the hard gate blocks first).
+- Alerts are log lines only; on a real job the callback would post to Slack or email.
+
+### What I still don't understand
+- _Viraj to fill in._

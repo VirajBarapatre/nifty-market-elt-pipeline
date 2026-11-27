@@ -1,7 +1,7 @@
 """Validate fetched prices and split them into good rows and rejected rows.
 
 Rejected rows are kept (not dropped) with a reason, so we can inspect them
-later. In Milestone 6 they go to a quarantine table.
+later. They are written to the quarantine table raw.rejected_prices.
 """
 import pandas as pd
 
@@ -9,8 +9,12 @@ REQUIRED_COLUMNS = ["ticker", "trade_date", "open", "high", "low", "close", "adj
 PRICE_COLUMNS = ["open", "high", "low", "close", "adj_close"]
 
 
-def validate(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (good_df, rejected_df). rejected_df has an extra reject_reason column."""
+def validate(df: pd.DataFrame,
+             allowed_tickers: list[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return (good_df, rejected_df). rejected_df has an extra reject_reason column.
+
+    If allowed_tickers is given, rows for any other ticker are rejected as unknown_ticker.
+    """
     # 1. Schema: if a column is missing, the whole batch is broken, not one row.
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
@@ -40,6 +44,10 @@ def validate(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     # 6. Duplicate ticker + date: we can't know which copy is right, so reject all copies.
     flag(df.duplicated(subset=["ticker", "trade_date"], keep=False), "duplicate_ticker_date")
+
+    # 7. Ticker must be one we expect (e.g. a typo or a stray symbol in a file).
+    if allowed_tickers is not None:
+        flag(~df["ticker"].isin(allowed_tickers), "unknown_ticker")
 
     is_bad = reasons != ""
     good = df[~is_bad].copy()

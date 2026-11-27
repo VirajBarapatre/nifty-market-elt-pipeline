@@ -11,10 +11,11 @@ Running it twice for the same dates replaces those rows instead of adding
 duplicates. That is what idempotent means here.
 """
 import logging
-from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from google.cloud import bigquery
+
+from ingestion.audit import extend_expiry
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,6 @@ SCHEMA = [
     bigquery.SchemaField("ingested_at", "TIMESTAMP"),
 ]
 COLUMNS = [field.name for field in SCHEMA]
-
-# Sandbox tables are deleted 60 days after creation, and rewriting a table does
-# NOT reset that clock. We push the expiry forward on every run instead.
-EXPIRY_DAYS = 59
 
 
 def load_prices(df: pd.DataFrame, client: bigquery.Client, project: str, dataset: str,
@@ -80,9 +77,8 @@ def load_prices(df: pd.DataFrame, client: bigquery.Client, project: str, dataset
 
     # Step 3: keep the table alive. A pipeline that runs regularly never expires;
     # one that stops for ~2 months loses its raw data (and must be backfilled again).
-    table = client.get_table(target)
-    table.expires = datetime.now(timezone.utc) + timedelta(days=EXPIRY_DAYS)
-    table = client.update_table(table, ["expires"])
+    # (Sandbox tables expire 60 days after creation; see audit.extend_expiry.)
+    table = extend_expiry(client, target)
     logger.info("Upserted %d rows; %s now has %d rows, expires %s",
                 len(df), target, table.num_rows, table.expires)
     return len(df)

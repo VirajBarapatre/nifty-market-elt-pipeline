@@ -1,6 +1,8 @@
 -- Per stock per day: daily return, 20/50-day moving averages, 30-day volatility.
 -- All windows count TRADING days (ROWS), not calendar days, because the fact has no
 -- rows on weekends/holidays.
+-- On a known corporate-action day (seed known_corporate_actions) daily_return is NULL:
+-- the price jump is a demerger or a bad split adjustment, not a real move.
 
 with prices as (
 
@@ -9,15 +11,27 @@ with prices as (
 
 ),
 
+corporate_actions as (
+
+    select ticker, action_date as trade_date, action_type
+    from {{ ref('known_corporate_actions') }}
+
+),
+
 returns as (
 
     select
-        *,
+        p.*,
+        ca.action_type is not null as is_corporate_action_day,
         -- Adjusted close, so a stock split doesn't look like a crash.
         -- SAFE_DIVIDE returns NULL instead of erroring if the previous price is 0/NULL.
-        safe_divide(adj_close_price, lag(adj_close_price) over by_ticker) - 1 as daily_return
-    from prices
-    window by_ticker as (partition by ticker order by trade_date)
+        if(ca.action_type is null,
+           safe_divide(p.adj_close_price, lag(p.adj_close_price) over by_ticker) - 1,
+           null) as daily_return
+    from prices as p
+    left join corporate_actions as ca
+        using (ticker, trade_date)
+    window by_ticker as (partition by p.ticker order by p.trade_date)
 
 ),
 
@@ -47,6 +61,7 @@ select
     adj_close_price,
     volume,
     daily_return,
+    is_corporate_action_day,
     -- Only publish a moving average once the full window exists; a "20-day" average
     -- of 3 days would be misleading on the dashboard.
     if(days_in_20 = 20, ma_20_raw, null)               as ma_20,
