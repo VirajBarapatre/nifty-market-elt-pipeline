@@ -4,6 +4,24 @@ An automated ELT pipeline that loads daily OHLCV prices for Nifty 50 stocks into
 
 > **Disclaimer:** This is a data engineering portfolio project. Nothing in this repository, its tables or its dashboard is investment advice or a recommendation to buy or sell any security. The data comes from an unofficial source and may be incomplete or wrong.
 
+## Dashboard
+
+Power BI report (`powerbi/nifty_dashboard.pbix`), Import mode on the dbt marts and the pipeline's audit tables.
+
+**Market overview**: equal-weighted Nifty 50 return for the day, advancers vs decliners, period return by sector, today's top 5 gainers and losers, and which stocks led most often.
+
+![Market overview](docs/images/dashboard-overview.png)
+
+**Stock deep-dive**: adjusted close with 20 and 50-day moving averages, daily return, 30-day annualised volatility and volume for one stock.
+
+![Stock deep-dive](docs/images/dashboard-stock.png)
+
+**Pipeline health**: last run status, rows loaded vs rejected per run, rejected rows by reason, and the run log, read from `raw.pipeline_runs` and `raw.rejected_prices`.
+
+![Pipeline health](docs/images/dashboard-pipeline-health.png)
+
+Model: star schema with `dim_stock` and `dim_date` filtering `fact_daily_prices`, `mart_stock_metrics`, `mart_top_movers` and `mart_sector_daily` (single-direction, many-to-one). Measures live in a `_Measures` table.
+
 ## Architecture
 
 _Diagram coming in Milestone 8._
@@ -34,6 +52,7 @@ Python 3.11 · Airflow (Docker Compose) · Google BigQuery (free sandbox) · dbt
 5. Copy `.env.example` to `.env` and fill in your values.
 6. Check the connection: `python scripts/check_bq_connection.py`.
 7. Start Airflow: in airflow/, run docker compose --env-file ../.env up airflow-init, then docker compose --env-file ../.env up -d. Open http://localhost:8080 (local login airflow / airflow) and unpause nifty_daily_pipeline.
+8. Open the dashboard: install Power BI Desktop (free, Windows), open `powerbi/nifty_dashboard.pbix`, then Home > Refresh. When asked, sign in to Google BigQuery with the Google account that owns your project, and change the project in Transform data > Data source settings if yours isn't `nifty-pipeline-viraj`. The file ships with a snapshot of the data, so it opens even without signing in.
 
 ## Design decisions
 

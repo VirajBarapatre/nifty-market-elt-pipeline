@@ -174,4 +174,34 @@
 - Alerts are log lines only; on a real job the callback would post to Slack or email.
 
 ### What I still don't understand
-- _Viraj to fill in._
+- Nothing yet.
+
+## Milestone 7: Power BI dashboard (done, 2026-11-27)
+
+### What was done
+- Power BI Desktop connected to BigQuery with the built-in Google BigQuery connector (Google account sign-in, no key file), Import mode.
+- Loaded the 6 marts plus `raw.pipeline_runs` and `raw.rejected_prices`.
+- Rebuilt the model as a star schema: auto-detect had joined the fact and marts to each other on price_id with bidirectional filters, so all relationships were deleted and recreated as 7 many-to-one, single-direction joins from `dim_stock` (ticker) and `dim_date` (date_day). Auto-detect and Auto date/time turned off, `dim_date` marked as the date table, `month_key` added to sort months.
+- Measures in a `_Measures` table: Latest Date, Market Date, Latest Close, Day Return %, Period Return %, Advancers, Decliners, Latest Volatility %, Times Top Gainer, and per-stock Adj Close, MA 20, MA 50, Daily Return %, Volatility 30d %, Volume (blank unless one stock is selected).
+- 3 pages: Market overview, Stock deep-dive, Pipeline health (run log times converted from UTC to IST).
+- Saved as `powerbi/nifty_dashboard.pbix`; screenshots in `docs/images/` and in the README.
+- Same evening: the scheduled run failed because the sandbox suddenly refused a 59-day table expiry (58 still worked; clocks checked, not the cause). Fixed: expiry is now 57 days and the expiry update is best effort (logs ALERT, never fails the load). Cleared only the failed tasks of that run; it finished green and Power BI page 3 shows it.
+
+### Decisions and why
+- **Import, not DirectQuery**: about 37k rows is tiny, visuals are instant, and each refresh is a handful of cheap queries inside the free 1 TiB per month.
+- **Star schema with single-direction filters**: filters flow from dimensions to facts only, so every filter has exactly one path and no relationship is ambiguous.
+- **Separate measures table**: measures are easy to find and don't depend on any one fact table.
+- **`VAR d = [Market Date]` before `CALCULATE`**: the date is evaluated once, in the outer filter context, then used as a filter.
+- **`REMOVEFILTERS(dim_stock)` in Market Date**: "today" means the market's latest day, not a stock's last row, so a missing stock can't show a stale return.
+- **`AVERAGEX(VALUES(dim_stock[ticker]), ...)` for period return**: computes each stock's return (context transition), then averages them equally, matching `mart_sector_daily`.
+- **HASONEVALUE guards**: price-level measures are blank when more than one stock is in context, because summing share prices is meaningless.
+- **Pipeline health page**: shows the monitoring from the previous milestone to a business user, not just in logs.
+
+### Known caveats
+- Equal-weighted returns, not the official free-float weighted Nifty 50.
+- Survivorship bias: using today's constituents for all 3 years flatters long-period returns (58% over 3 years).
+- TMPV and TRENT price levels jump on their corporate-action days, which distorts period return and moving averages across those dates; volatility is blank for 30 trading days after each.
+- The .pbix holds a snapshot and is refreshed by hand (scheduling needs Power BI Service, which needs a work or paid account).
+
+### What I still don't understand
+- Nothing yet.
