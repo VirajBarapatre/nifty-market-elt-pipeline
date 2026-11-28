@@ -7,7 +7,7 @@
 with prices as (
 
     select ticker, trade_date, price_id, close_price, adj_close_price, volume
-    from {{ ref('fact_daily_prices') }}
+    from {{ ref('fact_daily_pricez') }}
 
 ),
 
