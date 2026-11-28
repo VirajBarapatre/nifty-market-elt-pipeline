@@ -22,9 +22,6 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 - **BigQuery sandbox limits** (no DML, 60-day table expiry, 10 GiB storage): idempotent loads in Milestone 2 must use load jobs, not MERGE.
 - **Raw / staging / marts layers**: raw keeps untouched source data so transforms can be rebuilt without calling the API again; staging cleans; marts serve business-ready tables.
 
-### What I still don't understand
-- Nothing yet.
-
 ## Milestone 2: Ingestion (done, 2026-11-25)
 
 ### What was done
@@ -52,9 +49,6 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 - Rows fetched before 15:30 IST are intraday; the next run fixes them.
 - If the pipeline stops for ~2 months, the sandbox deletes the raw table and a backfill is needed.
 
-### What I still don't understand
-- Nothing yet.
-
 ## Milestone 3: dbt staging (done, 2026-11-25)
 
 ### What was done
@@ -73,9 +67,6 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 - **Re-filter and dedupe in staging**: staging must not trust whatever loaded the raw table.
 - **relationships instead of accepted_values for tickers**: the list stays in one place (the seed) and updates when the index changes; accepted_values is used on `series` instead.
 - **Freshness 3/5 days**: weekends and market holidays would make a 1-day threshold warn every Monday.
-
-### What I still don't understand
-- Nothing yet.
 
 ## Milestone 4: dbt marts (done, 2026-11-26)
 
@@ -99,9 +90,6 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 ### Known data issues
 - The plausibility test flagged TMPV.NS -40% on 2025-10-14 and TRENT.NS -33% on 2026-01-01. Both were investigated in Milestone 6: the Tata Motors demerger (Yahoo never adjusts demergers) and a Yahoo split-adjustment error. They affected returns, volatility, top movers and sector averages on those days until Milestone 6 handled them.
 - The 7 stocks Yahoo left null for 25 Nov were filled by the first scheduled Airflow run's 7-day re-fetch (Milestone 5).
-
-### What I still don't understand
-- Nothing yet.
 
 ## Milestone 5: Airflow orchestration (done, 2026-11-26)
 
@@ -134,9 +122,6 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 - Manual trigger without a logical date crashed with KeyError 'logical_date' (Airflow 3 behaviour). Fixed by falling back to `dag_run.run_after`.
 - `backfill create --to-date 2026-11-25` didn't include 25 Nov: the 17:00 IST (11:30 UTC) schedule time is after midnight of the to-date. Use the next day as to-date.
 - Backfill runs ran in parallel despite max_active_runs=1 on the DAG; pass `--max-active-runs 1` to backfill.
-
-### What I still don't understand
-- Nothing yet.
 
 ## Milestone 6: Data quality and monitoring (done, 2026-11-27)
 
@@ -172,9 +157,6 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 - Airflow runs with `input_file` measure completeness on the run date, not the file's date. Harmless for the demo (the hard gate blocks first).
 - Alerts are log lines only; on a real job the callback would post to Slack or email.
 
-### What I still don't understand
-- Nothing yet.
-
 ## Milestone 7: Power BI dashboard (done, 2026-11-27)
 
 ### What was done
@@ -202,9 +184,6 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 - TMPV and TRENT price levels jump on their corporate-action days, which distorts period return and moving averages across those dates; volatility is blank for 30 trading days after each.
 - The .pbix holds a snapshot and is refreshed by hand (scheduling needs Power BI Service, which needs a work or paid account).
 
-### What I still don't understand
-- Nothing yet.
-
 ## Milestone 8: CI and final polish (done, 2026-11-28)
 
 ### What was done
@@ -227,6 +206,3 @@ A milestone-by-milestone build log: what was done, the decisions behind it, and 
 ### Known caveats
 - CI can't catch SQL that is only invalid inside BigQuery, or yfinance changing its API.
 - Older commit messages still contain milestone numbers; history on main is not rewritten.
-
-### What I still don't understand
-- Nothing yet.
