@@ -1,4 +1,4 @@
-"""Milestone 1 smoke test: can we authenticate to BigQuery and create the raw dataset?
+"""Smoke test: can we authenticate to BigQuery and create the raw dataset?
 
 Run from the repo root with the venv active:
     python scripts/check_bq_connection.py

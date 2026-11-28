@@ -1,5 +1,7 @@
 # Progress
 
+A milestone-by-milestone build log: what was done, the decisions behind it, and what went wrong. Later work sometimes changed an earlier decision; where it did, the earlier entry points to the change.
+
 ## Milestone 1: Setup (done, 2026-11-25)
 
 ### What was done
@@ -7,9 +9,9 @@
 - `.gitignore` blocking secrets (`.env`, key file patterns), the venv, Python caches, dbt and Airflow generated output, and local data.
 - `.env.example` (committed, placeholders only) and `.env` (gitignored, real values).
 - Python 3.11.9 venv in `.venv`; packages: google-cloud-bigquery 3.47.0, python-dotenv 1.2.4, pytest 8.4.2.
-- BigQuery sandbox project `nifty-pipeline-viraj` (no billing). Service account `nifty-pipeline-sa` with BigQuery Data Editor + BigQuery Job User. Key stored in `C:\Users\viraj\.gcp\`, outside the repo.
+- BigQuery sandbox project `nifty-pipeline-viraj` (no billing). A dedicated service account with only BigQuery Data Editor + BigQuery Job User; its key is stored in the user profile, outside the repo.
 - `scripts/check_bq_connection.py` passed: `SELECT 1` ran and the `raw` dataset was created in `asia-south1`.
-- `git init`; confirmed `.env` and `.venv/` are ignored. Nothing committed yet.
+- `git init`; confirmed `.env` and `.venv/` are ignored before the first commit.
 - README skeleton with the not-investment-advice disclaimer and known limitations.
 
 ### Decisions and why
@@ -23,15 +25,12 @@
 ### What I still don't understand
 - Nothing yet.
 
-### Interview questions
-- Deferred to the end of the project. See the question bank (kept outside the repo).
-
 ## Milestone 2: Ingestion (done, 2026-11-25)
 
 ### What was done
 - `ingestion/fetch.py`: one ticker at a time from yfinance, 3 retries with exponential backoff, failed tickers logged and skipped.
 - `ingestion/validate.py`: schema check (whole batch fails), then row checks: nulls, prices <= 0, negative/zero volume, high < low, open/close outside [low, high], duplicate ticker+date. Rejected rows are kept with a `reject_reason`.
-- `ingestion/load.py`: idempotent upsert without DML: load job into `raw.daily_prices_incoming` (WRITE_TRUNCATE), then a query job rewrites `raw.daily_prices` as old rows not in the batch UNION ALL the batch. Pushes the table expiry forward 59 days on every run.
+- `ingestion/load.py`: idempotent upsert without DML: load job into `raw.daily_prices_incoming` (WRITE_TRUNCATE), then a query job rewrites `raw.daily_prices` as old rows not in the batch UNION ALL the batch. Pushes the table expiry forward 59 days on every run (later reduced to 57, see Milestone 7).
 - `ingestion/tickers.py`: reads symbols from the official NSE list `dbt/seeds/ind_nifty50list.csv` (niftyindices.com).
 - `ingestion/run.py`: fetch -> validate -> load. Default re-fetches the last 7 days; `--start/--end` for backfills.
 - Tested idempotency: loaded the same dates twice, 80 rows both times, 80 unique keys.
@@ -98,8 +97,8 @@
 - **Equal-weighted sectors**: simple and explainable; not the same as NSE's market-cap-weighted sector indices.
 
 ### Known data issues
-- The plausibility test flags TMPV.NS -40% on 2025-10-14 (likely the Tata Motors demerger, which Yahoo's adjusted close does not adjust for) and TRENT.NS -33% on 2026-01-01 (not yet investigated). Both affect returns, volatility, top movers and sector averages on those days.
-- Re-ran ingestion for 18-25 Nov: 25 Nov now has closing prices for 43 stocks; Yahoo returned null values for 7 (APOLLOHOSP, BAJAJ-AUTO, BHARTIARTL, HCLTECH, MARUTI, POWERGRID, SBILIFE). The next daily run's 7-day re-fetch should fill them in.
+- The plausibility test flagged TMPV.NS -40% on 2025-10-14 and TRENT.NS -33% on 2026-01-01. Both were investigated in Milestone 6: the Tata Motors demerger (Yahoo never adjusts demergers) and a Yahoo split-adjustment error. They affected returns, volatility, top movers and sector averages on those days until Milestone 6 handled them.
+- The 7 stocks Yahoo left null for 25 Nov were filled by the first scheduled Airflow run's 7-day re-fetch (Milestone 5).
 
 ### What I still don't understand
 - Nothing yet.
@@ -149,7 +148,7 @@
 - `ingestion/audit.py`: two append-only audit tables in `raw`, written with load jobs (no DML):
   - `raw.rejected_prices`: the quarantine. Every rejected row with run_id, reject_reason, rejected_at.
   - `raw.pipeline_runs`: one row per run attempt with the metrics, status (loaded / loaded_with_warnings / blocked) and the gate messages.
-  - `extend_expiry()` moved here and is shared with load.py, so all raw tables keep pushing their 60-day sandbox expiry forward.
+  - `extend_expiry()` moved here and is shared with load.py, so `daily_prices`, `rejected_prices` and `pipeline_runs` push their 60-day sandbox expiry forward on every write. (`daily_prices_incoming` is rewritten by every load and recreated if it ever expires.)
 - `ingestion/run.py`: `--input-file` to load a CSV instead of yfinance; runs the gates; exit codes 0 clean, 1 blocked, 2 loaded with warnings.
 - Airflow DAG: `validate` became `quality_gate` (validate, quarantine, metrics, hard gate). New `record_run` task beside dbt writes the run log and raises the soft alert. `dbt_test` now also runs `dbt source freshness` (stale data alert). `on_failure_callback` logs one `ALERT ...` line per failed task. New param `input_file` for demos.
 - dbt: seed `known_corporate_actions` (TMPV demerger 2025-10-14, TRENT split adjustment error 2026-01-01). `mart_stock_metrics` sets daily_return to NULL on those days and adds `is_corporate_action_day`. New singular test `assert_all_tickers_on_latest_day` (severity error).
@@ -185,7 +184,7 @@
 - Measures in a `_Measures` table: Latest Date, Market Date, Latest Close, Day Return %, Period Return %, Advancers, Decliners, Latest Volatility %, Times Top Gainer, and per-stock Adj Close, MA 20, MA 50, Daily Return %, Volatility 30d %, Volume (blank unless one stock is selected).
 - 3 pages: Market overview, Stock deep-dive, Pipeline health (run log times converted from UTC to IST).
 - Saved as `powerbi/nifty_dashboard.pbix`; screenshots in `docs/images/` and in the README.
-- Same evening: the scheduled run failed because the sandbox suddenly refused a 59-day table expiry (58 still worked; clocks checked, not the cause). Fixed: expiry is now 57 days and the expiry update is best effort (logs ALERT, never fails the load). Cleared only the failed tasks of that run; it finished green and Power BI page 3 shows it.
+- Same evening: the scheduled run failed because the sandbox suddenly refused a 59-day table expiry (58 still worked; clocks checked, not the cause). Fixed: expiry is now 57 days and the expiry update is best effort (logs ALERT, never fails the load). Cleared only the failed tasks of that run; it finished green and Power BI page 3 shows it. The quarantine table's expiry is now also extended on runs with no rejected rows, so its history can't quietly expire.
 
 ### Decisions and why
 - **Import, not DirectQuery**: about 37k rows is tiny, visuals are instant, and each refresh is a handful of cheap queries inside the free 1 TiB per month.
@@ -214,6 +213,7 @@
 - DAG now imports AirflowFailException from `airflow.sdk.exceptions` (the old path is deprecated in 3.4).
 - Worked like a team: branch `add-ci`, pull request, all 3 checks green, then a deliberately broken dbt ref turned dbt parse red while the other jobs stayed green, reverted with `git revert`, green again, squash merged.
 - README: CI badge, Testing and CI section. MIT LICENSE added.
+- README completed: architecture diagram (Mermaid), data layers per BigQuery dataset, design decisions and an honest "what this does not prove" section; milestone references removed from code comments.
 - Secrets audit of the whole git history: no .env, key file or private key was ever committed.
 
 ### Decisions and why

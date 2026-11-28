@@ -1,13 +1,13 @@
-# Milestone 1: talk to BigQuery and read .env
+# BigQuery client and .env loading
 google-cloud-bigquery[pandas]==3.*
 python-dotenv==1.*
 pytest==8.*
 
-# Milestone 2: fetch and validate prices
+# Fetching and validating prices
 yfinance==1.8.*
 pandas==2.*
 
-# Milestone 3: dbt
+# dbt (also installed separately inside the Airflow image)
 dbt-core==1.12.*
 dbt-bigquery==1.12.*
 python-dotenv[cli]==1.*

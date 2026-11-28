@@ -1,7 +1,7 @@
 """Read the ticker list from the official Nifty 50 constituents CSV.
 
 The CSV is downloaded from niftyindices.com and kept in dbt/seeds/, so the
-ingestion code and dbt (Milestone 3) share ONE source of truth for tickers.
+ingestion code and dbt share ONE source of truth for tickers.
 """
 from pathlib import Path
 
