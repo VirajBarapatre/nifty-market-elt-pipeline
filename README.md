@@ -1,5 +1,7 @@
 # Nifty Market Analytics Pipeline
 
+[![CI](https://github.com/VirajBarapatre/nifty-market-elt-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/VirajBarapatre/nifty-market-elt-pipeline/actions/workflows/ci.yml)
+
 An automated ELT pipeline that loads daily OHLCV prices for Nifty 50 stocks into BigQuery, transforms them with dbt into tested analytics tables, orchestrates the runs with Airflow, and serves a Power BI dashboard.
 
 > **Disclaimer:** This is a data engineering portfolio project. Nothing in this repository, its tables or its dashboard is investment advice or a recommendation to buy or sell any security. The data comes from an unofficial source and may be incomplete or wrong.

@@ -28,7 +28,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pendulum
-from airflow.exceptions import AirflowFailException
+from airflow.sdk.exceptions import AirflowFailException
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import Param, dag, get_current_context, task
 
