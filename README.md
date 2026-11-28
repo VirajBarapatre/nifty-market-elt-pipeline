@@ -87,6 +87,20 @@ python -m ingestion.run --input-file tests/fixtures/bad_prices.csv   # exit code
 
 In Airflow, copy the file to `airflow/data/` and trigger the DAG with config `{"input_file": "bad_prices.csv"}`.
 
+## Testing and CI
+
+Every push to main and every pull request runs three checks in GitHub Actions (`.github/workflows/ci.yml`). None of them touch BigQuery or need a secret.
+
+| Job | What it checks |
+|---|---|
+| Python unit tests | `pytest` on Python 3.11: validation rules, quality gates, fetch (yfinance faked), ticker list, audit helpers. |
+| dbt parse | Every model, source, seed and test resolves: broken refs, Jinja errors and bad YAML fail the build. |
+| Airflow DAG integrity | The DAG imports under Airflow 3.4.0, has the expected 7 tasks, runs the quality gate before load and dbt, and allows one run at a time. |
+
+Run the same tests locally with `pytest -q` (the DAG tests skip unless Airflow is installed). The pipeline itself is checked end to end by dbt tests and source freshness on every Airflow run.
+
+Not covered by CI: SQL that only fails inside BigQuery (that needs a warehouse connection and credentials), and the yfinance API itself.
+
 ## Known limitations
 
 - **yfinance is unofficial.** It scrapes Yahoo Finance, can be rate limited, and can return missing days, placeholder rows or bad tickers. The pipeline retries, validates and logs these, but the data is not guaranteed. In the 3-year backfill, 106 of 36,900 rows were rejected as zero-volume placeholder rows.

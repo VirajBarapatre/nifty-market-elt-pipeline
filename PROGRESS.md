@@ -205,3 +205,28 @@
 
 ### What I still don't understand
 - Nothing yet.
+
+## Milestone 8: CI and final polish (done, 2026-11-28)
+
+### What was done
+- `.github/workflows/ci.yml`: three jobs on every push to main and every pull request: Python unit tests, `dbt parse` with placeholder settings, and Airflow DAG integrity (Airflow 3.4.0 installed with the official constraints file).
+- `tests/test_dag_integrity.py`: the DAG imports with no errors, has the 7 expected tasks, quality_gate runs before load and dbt, max_active_runs is 1, catchup is off, retries are 2. Skips when Airflow isn't installed.
+- DAG now imports AirflowFailException from `airflow.sdk.exceptions` (the old path is deprecated in 3.4).
+- Worked like a team: branch `add-ci`, pull request, all 3 checks green, then a deliberately broken dbt ref turned dbt parse red while the other jobs stayed green, reverted with `git revert`, green again, squash merged.
+- README: CI badge, Testing and CI section. MIT LICENSE added.
+- Secrets audit of the whole git history: no .env, key file or private key was ever committed.
+
+### Decisions and why
+- **No credentials in CI**: tests use fakes and parse-only checks, so the service account key never leaves the laptop and CI can't run up cost.
+- **dbt parse, not dbt build**: build needs BigQuery; parse still catches the most common breakages (refs, Jinja, YAML) for free.
+- **DAG tests in their own job**: Airflow is heavy and has its own pinned dependencies, so it gets a separate install with the official constraints file instead of polluting requirements.txt.
+- **`importorskip("airflow.sdk")`**: the repo's own `airflow/` folder imports as an empty namespace package, so checking plain `airflow` would wrongly think Airflow is installed.
+- **Revert instead of rewriting history**: a new commit that undoes the bad one keeps the evidence and never rewrites shared history.
+- **Squash merge**: main gets one clean commit per change; the pull request keeps the detailed history.
+
+### Known caveats
+- CI can't catch SQL that is only invalid inside BigQuery, or yfinance changing its API.
+- Older commit messages still contain milestone numbers; history on main is not rewritten.
+
+### What I still don't understand
+- Nothing yet.
