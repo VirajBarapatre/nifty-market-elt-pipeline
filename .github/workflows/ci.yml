@@ -1,0 +1,70 @@
+# Continuous integration: runs on every push to main and every pull request.
+# None of these jobs touch BigQuery or need a secret: unit tests use fakes,
+# dbt parse only reads files, and the DAG check only imports Python.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:            # a "Run workflow" button in the Actions tab
+
+permissions:
+  contents: read                # the jobs only read the repo; least privilege
+
+concurrency:                    # a new push cancels the still-running check of the old one
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip            # reuse downloaded wheels between runs
+      - run: pip install -r requirements.txt
+      - run: pytest -q          # the DAG tests skip here (no Airflow); they run in the dag job
+
+  dbt:
+    name: dbt parse
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Placeholders: dbt parse reads profiles.yml but never connects.
+      GCP_PROJECT_ID: ci-placeholder
+      BQ_DBT_DATASET: analytics
+      BQ_LOCATION: asia-south1
+      GOOGLE_APPLICATION_CREDENTIALS: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install "dbt-core==1.12.*" "dbt-bigquery==1.12.*"
+      # Catches broken refs/sources, Jinja errors, bad YAML and test configs.
+      - run: dbt parse --project-dir dbt --profiles-dir dbt
+
+  dag:
+    name: Airflow DAG integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AIRFLOW_HOME: /tmp/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      # Airflow's official constraints file pins every dependency to a tested version.
+      - run: >
+          pip install "apache-airflow==3.4.0" pytest
+          --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.4.0/constraints-3.11.txt"
+      - run: pytest -q tests/test_dag_integrity.py
